@@ -1,0 +1,74 @@
+package agtwo
+
+import (
+	"fmt"
+)
+
+type FilterHandler interface {
+	Parse(k string, c []byte) error
+	BuildQuery() (*QueryFilter, error)
+}
+
+type Filter struct {
+	Handler  FilterHandler
+	Operator string `json:"operator"`
+}
+
+func (f *Filter) H() FilterHandler {
+	if f.Operator != "" {
+		f.Handler = &FilterModelCondition{}
+		return f.Handler
+	}
+	f.Handler = &FilterModel{}
+	return f.Handler
+}
+
+type FilterTypeSqlHandler interface {
+	New() FilterTypeSqlHandler
+	BuildSql(k string, v any, t string, f ...F) (*QueryFilter, error)
+}
+
+// 判断逻辑
+const (
+	LessThan           = "lessThan"
+	Equals             = "equals"
+	NotEqual           = "notEqual"
+	GreaterThanOrEqual = "greaterThanOrEqual"
+	GreaterThan        = "greaterThan"
+	InRange            = "inRange"
+	Blank              = "blank"
+	NotBlank           = "notBlank"
+	LessThanOrEqual    = "lessThanOrEqual"
+	Contains           = "contains"
+	NotContains        = "notContains"
+	StartsWith         = "startsWith"
+	EndsWith           = "endsWith"
+)
+
+// FilterType 类型
+const (
+	Text   = "text"
+	Number = "number"
+	Date   = "date"
+)
+
+var FilterTypeSqlHandlerM = map[string]FilterTypeSqlHandler{
+	Text:   &FilterText{},
+	Number: &FilterNumber{},
+	Date:   &FilterDate{},
+}
+
+func getFilterTypeSqlHandler(filterType string) (FilterTypeSqlHandler, error) {
+	if _, ok := FilterTypeSqlHandlerM[filterType]; !ok {
+		return nil, fmt.Errorf("invalid filter-type:%v", filterType)
+	}
+	return FilterTypeSqlHandlerM[filterType], nil
+}
+func NewFilterSqlHandler(filterType string) (FilterTypeSqlHandler, error) {
+	h, err := getFilterTypeSqlHandler(filterType)
+	if err != nil {
+		return nil, err
+	}
+	h = h.New()
+	return h, nil
+}
