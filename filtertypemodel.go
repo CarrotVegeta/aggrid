@@ -75,3 +75,26 @@ func (fnm *FilterNumberModel) parseFilter() any {
 	}
 	return fnm.Filter
 }
+
+type FilterArrayModel struct {
+	FilterType string `json:"filterType" form:"filterType"`
+	Type       string `json:"type" form:"type"`
+	Filter     []any  `json:"filter" form:"filter"`
+	Key        string `json:"key"`
+}
+
+func (fnm *FilterArrayModel) Parse(c []byte) error {
+	if err := json.Unmarshal(c, fnm); err != nil {
+		return err
+	}
+	return nil
+}
+func (fnm *FilterArrayModel) GetFilter() (any, error) {
+	return fnm.parseFilter(), nil
+}
+func (fnm *FilterArrayModel) GetType() string {
+	return fnm.Type
+}
+func (fnm *FilterArrayModel) parseFilter() any {
+	return fnm.Filter
+}

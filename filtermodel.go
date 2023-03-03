@@ -44,6 +44,7 @@ var FilterTypeHandlerM = map[string]FilterTypeHandler{
 	Text:   &FilterTextModel{},
 	Number: &FilterNumberModel{},
 	Date:   &FilterDateModel{},
+	Array:  &FilterArrayModel{},
 }
 
 func getFilterTypeHandler(filterType string) (FilterTypeHandler, error) {

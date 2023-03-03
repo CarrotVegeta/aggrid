@@ -9,6 +9,7 @@ import (
 // AgGHandler
 // GetDB 获取db
 // GetSqlField获取前端传来的字段所对应的sql 字段，如果没有则无效
+// GetSelectField 获取需要查询的字段
 type AgGHandler interface {
 	GetSqlField(k string) string
 	GetSelectField() []string
@@ -193,7 +194,9 @@ func (ag *AgGrid) BuildSortSql(sortModels []SortModel) (string, error) {
 			if len(ag.Param.GroupKeys) == 0 {
 				sm = sortModels[0]
 			} else {
-				sm = sortModels[len(ag.Param.GroupKeys)]
+				if len(ag.Param.GroupKeys) != len(sortModels) {
+					sm = sortModels[len(ag.Param.GroupKeys)]
+				}
 			}
 			gn, err := ag.getGroupName(ag.Param.RowGroupCols, ag.Param.GroupKeys)
 			if err != nil {
@@ -270,7 +273,7 @@ func (ag *AgGrid) parseFilterModel() error {
 		if err := json.Unmarshal(bs, f); err != nil {
 			return err
 		}
-		err := f.H().Parse(k, bs)
+		err := f.H().Parse(field, bs)
 		if err != nil {
 			return err
 		}

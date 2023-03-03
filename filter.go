@@ -50,12 +50,14 @@ const (
 	Text   = "text"
 	Number = "number"
 	Date   = "date"
+	Array  = "array"
 )
 
 var FilterTypeSqlHandlerM = map[string]FilterTypeSqlHandler{
 	Text:   &FilterText{},
 	Number: &FilterNumber{},
 	Date:   &FilterDate{},
+	Array:  &FilterArray{},
 }
 
 func getFilterTypeSqlHandler(filterType string) (FilterTypeSqlHandler, error) {
@@ -69,6 +71,5 @@ func NewFilterSqlHandler(filterType string) (FilterTypeSqlHandler, error) {
 	if err != nil {
 		return nil, err
 	}
-	h = h.New()
-	return h, nil
+	return h.New(), nil
 }
