@@ -168,20 +168,16 @@ func (a *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (string, error)
 		return "", nil
 	}
 	groupName := cols[0].Field
-	field := a.Handler.GetSqlField(cols[0].Field)
-	if field == "" {
-		return "", fmt.Errorf("invalid group field :%v", groupName)
-	}
 	if len(keys) > 0 {
 		if len(cols) == len(keys) {
 			groupName = cols[len(cols)-1].Field
 		} else {
 			groupName = cols[len(keys)].Field
 		}
-		field = a.Handler.GetSqlField(groupName)
-		if field == "" {
-			return "", fmt.Errorf("invalid group field2 :%v", groupName)
-		}
+	}
+	field := a.Handler.GetSqlField(groupName)
+	if field == "" {
+		return "", fmt.Errorf("%s:%v", InvalidGroupField, groupName)
 	}
 	return field, nil
 }
