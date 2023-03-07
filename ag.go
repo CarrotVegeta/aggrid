@@ -6,8 +6,9 @@ import (
 	"gorm.io/gorm"
 )
 
+const sqlCountStr = "SELECT COUNT(1) FROM (%s) AS a"
+
 // AgGHandler
-// GetDB 获取db
 // GetSqlField获取前端传来的字段所对应的sql 字段，如果没有则无效
 // GetSelectField 获取需要查询的字段
 type AgGHandler interface {
@@ -35,6 +36,7 @@ type RowGroupCol struct {
 type AgGrid struct {
 	Param   *Param
 	Handler AgGHandler
+	db      *gorm.DB
 	qf      *QueryFilter
 	sortStr string
 }
@@ -81,32 +83,36 @@ func (sb *SqlBuilder) BuildSql() (string, error) {
 	}
 	return sqlStr, nil
 }
-func (ag *AgGrid) ExecSql(db *gorm.DB, sb *SqlBuilder) (data []map[string]any, count int64, err error) {
+func (a *AgGrid) Use(db *gorm.DB) *AgGrid {
+	a.db = db
+	return a
+}
+func (a *AgGrid) ExecSql(sb *SqlBuilder) (data []map[string]any, count int64, err error) {
 	sqlStr, err := sb.BuildSql()
 	if err != nil {
 		return nil, 0, err
 	}
-	sqlCountStr := fmt.Sprintf("SELECT COUNT(1) FROM (%s) AS a", sqlStr)
-	if err := db.Raw(sqlCountStr, sb.Args...).Scan(&count).Error; err != nil {
+	sqlCountStr := fmt.Sprintf(sqlCountStr, sqlStr)
+	if err := a.db.Raw(sqlCountStr, sb.Args...).Scan(&count).Error; err != nil {
 		return nil, 0, err
 	}
-	if ag.Param.EndRow-ag.Param.StartRow != 0 {
-		sqlStr += fmt.Sprintf("limit %d,%d", ag.Param.StartRow, ag.Param.EndRow-ag.Param.StartRow)
+	if a.Param.EndRow-a.Param.StartRow != 0 {
+		sqlStr += fmt.Sprintf("limit %d,%d", a.Param.StartRow, a.Param.EndRow-a.Param.StartRow)
 	}
-	db = db.Raw(sqlStr, sb.Args...)
+	db := a.db.Raw(sqlStr, sb.Args...)
 	err = db.Find(&data).Error
 	if err != nil {
 		return nil, 0, err
 	}
 	return
 }
-func (ag *AgGrid) buildGroupSelect() (string, error) {
-	gn, err := ag.getGroupName(ag.Param.RowGroupCols, ag.Param.GroupKeys)
+func (a *AgGrid) buildGroupSelect() (string, error) {
+	gn, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
 	return fmt.Sprintf("SELECT %s,COUNT(*) AS count", gn), err
 }
-func (ag *AgGrid) BuildSelect() string {
+func (a *AgGrid) BuildSelect() string {
 	var selectSql string
-	for _, v := range ag.Handler.GetSelectField() {
+	for _, v := range a.Handler.GetSelectField() {
 		if selectSql == "" {
 			selectSql = v
 			continue
@@ -118,17 +124,17 @@ func (ag *AgGrid) BuildSelect() string {
 	}
 	return "SELECT " + selectSql
 }
-func (ag *AgGrid) GetSelectSql() (string, error) {
-	if len(ag.Param.RowGroupCols) > 0 && len(ag.Param.RowGroupCols) != len(ag.Param.GroupKeys) {
-		return ag.buildGroupSelect()
+func (a *AgGrid) GetSelectSql() (string, error) {
+	if len(a.Param.RowGroupCols) > 0 && len(a.Param.RowGroupCols) != len(a.Param.GroupKeys) {
+		return a.buildGroupSelect()
 	}
-	return ag.BuildSelect(), nil
+	return a.BuildSelect(), nil
 }
 
 // BuildGroupSql 如果分组参数大于0 并且 分组参数不等于key值，则拼接groupbysql
-func (ag *AgGrid) BuildGroupSql() (string, error) {
-	if len(ag.Param.RowGroupCols) > 0 && len(ag.Param.RowGroupCols) != len(ag.Param.GroupKeys) {
-		gn, err := ag.getGroupName(ag.Param.RowGroupCols, ag.Param.GroupKeys)
+func (a *AgGrid) BuildGroupSql() (string, error) {
+	if len(a.Param.RowGroupCols) > 0 && len(a.Param.RowGroupCols) != len(a.Param.GroupKeys) {
+		gn, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
 		if err != nil {
 			return "", nil
 		}
@@ -140,29 +146,29 @@ func (ag *AgGrid) BuildGroupSql() (string, error) {
 	}
 	return "", nil
 }
-func (ag *AgGrid) BuildQuerySql() (query string, args []any, err error) {
-	err = ag.buildGroupQuery(ag.Param.RowGroupCols, ag.Param.GroupKeys)
+func (a *AgGrid) BuildQuerySql() (query string, args []any, err error) {
+	err = a.buildGroupQuery(a.Param.RowGroupCols, a.Param.GroupKeys)
 	if err != nil {
 		return "", nil, nil
 	}
-	err = ag.parseFilterModel()
+	err = a.parseFilterModel()
 	if err != nil {
 		return "", nil, err
 	}
-	if ag.qf.Query == "" {
+	if a.qf.Query == "" {
 		return "", nil, nil
 	}
-	query = "WHERE " + ag.qf.Query
-	return query, ag.qf.Args, nil
+	query = "WHERE " + a.qf.Query
+	return query, a.qf.Args, nil
 }
 
 // getGroupName 获取分组条件
-func (ag *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (string, error) {
+func (a *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (string, error) {
 	if len(cols) == 0 {
 		return "", nil
 	}
 	groupName := cols[0].Field
-	field := ag.Handler.GetSqlField(cols[0].Field)
+	field := a.Handler.GetSqlField(cols[0].Field)
 	if field == "" {
 		return "", fmt.Errorf("invalid group field :%v", groupName)
 	}
@@ -172,7 +178,7 @@ func (ag *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (string, error
 		} else {
 			groupName = cols[len(keys)].Field
 		}
-		field = ag.Handler.GetSqlField(groupName)
+		field = a.Handler.GetSqlField(groupName)
 		if field == "" {
 			return "", fmt.Errorf("invalid group field2 :%v", groupName)
 		}
@@ -181,38 +187,38 @@ func (ag *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (string, error
 }
 
 // BuildSortSql 生成排序sql
-func (ag *AgGrid) BuildSortSql(sortModels []SortModel) (string, error) {
-	//groupName, err := ag.getGroupName(ag.Param.RowGroupCols, ag.Param.GroupKeys)
+func (a *AgGrid) BuildSortSql(sortModels []SortModel) (string, error) {
+	//groupName, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
 	//if err != nil {
 	//	return "", nil
 	//}
 	var sortStr string
 	if len(sortModels) > 0 {
-		if len(ag.Param.RowGroupCols) > 0 && len(ag.Param.RowGroupCols) != len(ag.Param.GroupKeys) {
+		if len(a.Param.RowGroupCols) > 0 && len(a.Param.RowGroupCols) != len(a.Param.GroupKeys) {
 
 			var sm SortModel
-			if len(ag.Param.GroupKeys) == 0 {
+			if len(a.Param.GroupKeys) == 0 {
 				sm = sortModels[0]
 			} else {
-				if len(ag.Param.GroupKeys) != len(sortModels) {
-					sm = sortModels[len(ag.Param.GroupKeys)]
+				if len(a.Param.GroupKeys) != len(sortModels) {
+					sm = sortModels[len(a.Param.GroupKeys)]
 				}
 			}
-			gn, err := ag.getGroupName(ag.Param.RowGroupCols, ag.Param.GroupKeys)
+			gn, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
 			if err != nil {
 				return "", err
 			}
 			if gn != sm.ColId {
 				return "", err
 			}
-			ss, err := ag.buildsortstr(sm.ColId, sm.Sort)
+			ss, err := a.buildsortstr(sm.ColId, sm.Sort)
 			if err != nil {
 				return "", err
 			}
 			sortStr = ss
 		} else {
 			for _, v := range sortModels {
-				ss, err := ag.buildsortstr(v.ColId, v.Sort)
+				ss, err := a.buildsortstr(v.ColId, v.Sort)
 				if err != nil {
 					return "", err
 				}
@@ -230,8 +236,8 @@ func (ag *AgGrid) BuildSortSql(sortModels []SortModel) (string, error) {
 	sortStr = "ORDER BY " + sortStr
 	return sortStr, nil
 }
-func (ag *AgGrid) buildsortstr(colid, sort string) (string, error) {
-	k := ag.Handler.GetSqlField(colid)
+func (a *AgGrid) buildsortstr(colid, sort string) (string, error) {
+	k := a.Handler.GetSqlField(colid)
 	if k == "" {
 		return "", fmt.Errorf("invalid colid %v", colid)
 	}
@@ -247,24 +253,24 @@ func (ag *AgGrid) buildsortstr(colid, sort string) (string, error) {
 }
 
 // buildGroupQuery 生成组合查询sql
-func (ag *AgGrid) buildGroupQuery(cols []RowGroupCol, keys []string) error {
+func (a *AgGrid) buildGroupQuery(cols []RowGroupCol, keys []string) error {
 	if len(cols) > 0 && len(keys) > 0 {
 		for i, v := range keys {
-			field := ag.Handler.GetSqlField(cols[i].Field)
+			field := a.Handler.GetSqlField(cols[i].Field)
 			if field == "" {
 				return fmt.Errorf("invalid field:%v", field)
 			}
 			query := fmt.Sprintf("%s = ? ", field)
-			ag.qf.And(query, v)
+			a.qf.And(query, v)
 		}
 	}
 	return nil
 }
 
 // ParseFilterModel 解析查询参数 并生成对应sql
-func (ag *AgGrid) parseFilterModel() error {
-	for k, v := range ag.Param.FilterModel {
-		field := ag.Handler.GetSqlField(k)
+func (a *AgGrid) parseFilterModel() error {
+	for k, v := range a.Param.FilterModel {
+		field := a.Handler.GetSqlField(k)
 		if field == "" {
 			return fmt.Errorf("invalid model field : %v", k)
 		}
@@ -281,7 +287,7 @@ func (ag *AgGrid) parseFilterModel() error {
 		if err != nil {
 			return err
 		}
-		ag.qf.And(q.Query, q.Args...)
+		a.qf.And(q.Query, q.Args...)
 	}
 	return nil
 }
