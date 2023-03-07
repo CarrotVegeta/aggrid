@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"gorm.io/gorm"
+	"strings"
 )
-
-const sqlCountStr = "SELECT COUNT(1) FROM (%s) AS a"
 
 // AgGHandler
 // GetSqlField获取前端传来的字段所对应的sql 字段，如果没有则无效
@@ -60,49 +59,97 @@ type SqlBuilder struct {
 	SortSql   string
 	FromSql   string
 	Args      []any
+	sqlStr    strings.Builder
+	Err       error
 }
 
-func (sb *SqlBuilder) BuildSql() (string, error) {
-	var sqlStr string
-	sqlStr += sb.SelectSql + " "
+func (sb *SqlBuilder) WriteSqlStr(s string) {
+	sb.sqlStr.WriteString(s + " ")
+}
+func (sb *SqlBuilder) BuildSelectSql() *SqlBuilder {
+	sb.WriteSqlStr(sb.SelectSql)
 	if sb.SelectSql == "" {
-		sqlStr = "SELECT * "
+		sb.WriteSqlStr("SELECT * ")
 	}
+	return sb
+}
+func (sb *SqlBuilder) BuildFromSql() *SqlBuilder {
 	if sb.FromSql == "" {
-		return "", fmt.Errorf("from sql is null")
+		sb.Err = InvalidFromSql
 	}
-	sqlStr += sb.FromSql + " "
-	if sb.QuerySql != "" {
-		sqlStr += sb.QuerySql + " "
+	sb.WriteSqlStr(sb.FromSql + " ")
+	return sb
+}
+func (sb *SqlBuilder) BuildQuerySql() *SqlBuilder {
+	sb.WriteSqlStr(sb.QuerySql)
+	return sb
+}
+func (sb *SqlBuilder) BuildGroupSql() *SqlBuilder {
+	sb.WriteSqlStr(sb.GroupSql)
+	return sb
+}
+func (sb *SqlBuilder) BuildSortSql() *SqlBuilder {
+	sb.WriteSqlStr(sb.SortSql)
+	return sb
+}
+func (sb *SqlBuilder) SqlString() string {
+	return sb.sqlStr.String()
+}
+func (sb *SqlBuilder) BuildNoLimitSql() *SqlBuilder {
+	sb.BuildSelectSql().BuildFromSql().BuildQuerySql().BuildGroupSql().BuildSortSql()
+	return sb
+
+}
+func (sb *SqlBuilder) ToSqlString() (string, error) {
+	if sb.Err != nil {
+		return "", sb.Err
 	}
-	if sb.GroupSql != "" {
-		sqlStr += sb.GroupSql + " "
-	}
-	if sb.SortSql != "" {
-		sqlStr += sb.SortSql + " "
-	}
+	sqlStr := sb.SqlString()
+	sb.sqlStr.Reset()
 	return sqlStr, nil
+}
+func (sb *SqlBuilder) BuildAndLimitSql(offset, pageSize int) *SqlBuilder {
+	sb.sqlStr.Reset()
+	sb.BuildNoLimitSql()
+	sb.BuildSelectSql().BuildFromSql().BuildQuerySql().BuildGroupSql().BuildSortSql().BuildLimitSql(offset, pageSize)
+	return sb
+}
+func (sb *SqlBuilder) BuildLimitSql(offset, pageSize int) *SqlBuilder {
+	sb.WriteSqlStr(BuildLimitSql(offset, pageSize))
+	return sb
+}
+func (sb *SqlBuilder) BuildCountSql() *SqlBuilder {
+	sqlStr := BuildCountSql(sb.SqlString())
+	sb.sqlStr.Reset()
+	sb.WriteSqlStr(sqlStr)
+	return sb
 }
 func (a *AgGrid) Use(db *gorm.DB) *AgGrid {
 	a.db = db
 	return a
 }
 func (a *AgGrid) ExecSql(sb *SqlBuilder) (data []map[string]any, count int64, err error) {
-	sqlStr, err := sb.BuildSql()
+	var (
+		sqlStr, sqlCountStr, sqlLimitSqlStr string
+	)
+	sqlStr, err = sb.BuildNoLimitSql().ToSqlString()
+	sqlCountStr, err = sb.BuildCountSql().ToSqlString()
+	if a.Param.EndRow-a.Param.StartRow != 0 {
+		sqlLimitSqlStr, err = sb.BuildAndLimitSql(a.Param.StartRow, a.Param.EndRow-a.Param.StartRow).ToSqlString()
+	}
 	if err != nil {
 		return nil, 0, err
 	}
-	sqlCountStr := fmt.Sprintf(sqlCountStr, sqlStr)
 	if err := a.db.Raw(sqlCountStr, sb.Args...).Scan(&count).Error; err != nil {
 		return nil, 0, err
 	}
-	if a.Param.EndRow-a.Param.StartRow != 0 {
-		sqlStr += fmt.Sprintf("limit %d,%d", a.Param.StartRow, a.Param.EndRow-a.Param.StartRow)
+	if sqlLimitSqlStr != "" {
+		sqlStr = sqlLimitSqlStr
 	}
 	db := a.db.Raw(sqlStr, sb.Args...)
 	err = db.Find(&data).Error
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("%s:%v", RawSqlError, err)
 	}
 	return
 }
@@ -207,14 +254,14 @@ func (a *AgGrid) BuildSortSql(sortModels []SortModel) (string, error) {
 			if gn != sm.ColId {
 				return "", err
 			}
-			ss, err := a.buildsortstr(sm.ColId, sm.Sort)
+			ss, err := a.buildSortStr(sm.ColId, sm.Sort)
 			if err != nil {
 				return "", err
 			}
 			sortStr = ss
 		} else {
 			for _, v := range sortModels {
-				ss, err := a.buildsortstr(v.ColId, v.Sort)
+				ss, err := a.buildSortStr(v.ColId, v.Sort)
 				if err != nil {
 					return "", err
 				}
@@ -232,18 +279,13 @@ func (a *AgGrid) BuildSortSql(sortModels []SortModel) (string, error) {
 	sortStr = "ORDER BY " + sortStr
 	return sortStr, nil
 }
-func (a *AgGrid) buildsortstr(colid, sort string) (string, error) {
-	k := a.Handler.GetSqlField(colid)
+func (a *AgGrid) buildSortStr(colId, sort string) (string, error) {
+	k := a.Handler.GetSqlField(colId)
 	if k == "" {
-		return "", fmt.Errorf("invalid colid %v", colid)
+		return "", fmt.Errorf("%s:%v", InvalidSqlField, colId)
 	}
-	//if groupName != "" {
-	//	if k != groupName {
-	//		continue
-	//	}
-	//}
 	if !validSort(sort) {
-		return "", fmt.Errorf("invalid sort : %v", k)
+		return "", fmt.Errorf("%s : %v", InvalidSortField, k)
 	}
 	return fmt.Sprintf("%s %s", k, sort), nil
 }
@@ -254,7 +296,7 @@ func (a *AgGrid) buildGroupQuery(cols []RowGroupCol, keys []string) error {
 		for i, v := range keys {
 			field := a.Handler.GetSqlField(cols[i].Field)
 			if field == "" {
-				return fmt.Errorf("invalid field:%v", field)
+				return fmt.Errorf("%s:%v", InvalidSqlField, field)
 			}
 			query := fmt.Sprintf("%s = ? ", field)
 			a.qf.And(query, v)
@@ -268,7 +310,7 @@ func (a *AgGrid) parseFilterModel() error {
 	for k, v := range a.Param.FilterModel {
 		field := a.Handler.GetSqlField(k)
 		if field == "" {
-			return fmt.Errorf("invalid model field : %v", k)
+			return fmt.Errorf("%s : %v", InvalidSqlField, k)
 		}
 		bs, _ := json.Marshal(v)
 		f := &Filter{}
