@@ -39,22 +39,26 @@ func (f *FilterModel) BuildQuery() (*QueryFilter, error) {
 	}
 	return h.BuildSql(f.Key, filter, handler.GetType())
 }
-
-var FilterTypeHandlerM = map[string]FilterTypeHandler{
-	Text:   &FilterTextModel{},
-	Number: &FilterNumberModel{},
-	Date:   &FilterDateModel{},
-	Array:  &FilterArrayModel{},
+func init() {
+	registerFilterType(Text, &FilterTextModel{})
+	registerFilterType(Number, &FilterNumberModel{})
+	registerFilterType(Date, &FilterDateModel{})
+	registerFilterType(Array, &FilterArrayModel{})
 }
 
+var FilterTypeHandlerM = make(map[string]FilterTypeHandler)
+
+func RegisterFilterType(filterType string, h FilterTypeHandler) {
+	registerFilterType(filterType, h)
+}
+func registerFilterType(filterType string, h FilterTypeHandler) {
+	FilterTypeHandlerM[filterType] = h
+}
 func getFilterTypeHandler(filterType string) (FilterTypeHandler, error) {
 	if _, ok := FilterTypeHandlerM[filterType]; !ok {
 		return nil, fmt.Errorf("invalid filtertype : %v", filterType)
 	}
 	return FilterTypeHandlerM[filterType], nil
-}
-
-type FilterType struct {
 }
 
 func NewFilterTypeHandler(filterType string, c []byte) (FilterTypeHandler, error) {
