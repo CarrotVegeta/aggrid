@@ -124,6 +124,7 @@ func (sb *SqlBuilder) BuildCountSql() *SqlBuilder {
 	sb.WriteSqlStr(sqlStr)
 	return sb
 }
+
 func (a *AgGrid) Use(db *gorm.DB) *AgGrid {
 	a.db = db
 	return a
