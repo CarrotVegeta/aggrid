@@ -179,7 +179,7 @@ func (a *AgGrid) GetSelectSql() (string, error) {
 	return a.BuildSelect(), nil
 }
 
-// BuildGroupSql 如果分组参数大于0 并且 分组参数不等于key值，则拼接groupbysql
+// BuildGroupSql 如果分组参数大于0 并且 分组参数不等于key值，则拼接groupBySql
 func (a *AgGrid) BuildGroupSql() (string, error) {
 	if len(a.Param.RowGroupCols) > 0 && len(a.Param.RowGroupCols) != len(a.Param.GroupKeys) {
 		gn, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
