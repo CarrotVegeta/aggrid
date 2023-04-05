@@ -136,8 +136,11 @@ func (a *AgGrid) getAgTagValue(agTag, tag string) string {
 	}
 	return ""
 }
-func (a *AgGrid) getSelectField() {
-
+func (a *AgGrid) getSelectField(k string) string {
+	return a.selectField[k]
+}
+func (a *AgGrid) getGroupField(k string) string {
+	return a.groupField[k]
 }
 func (a *AgGrid) buildGroupSelect() (string, error) {
 	gn, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
@@ -208,7 +211,7 @@ func (a *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (string, error)
 			groupName = cols[len(keys)].Field
 		}
 	}
-	field := a.Handler.GetSqlField(groupName)
+	field := a.getGroupField(groupName)
 	if field == "" {
 		return "", fmt.Errorf("%s:%v", InvalidGroupField, groupName)
 	}
