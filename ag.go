@@ -260,7 +260,7 @@ func (a *AgGrid) buildSortStr(colId, sort string) (string, error) {
 func (a *AgGrid) buildGroupQuery(cols []RowGroupCol, keys []string) error {
 	if len(cols) > 0 && len(keys) > 0 {
 		for i, v := range keys {
-			field := a.Handler.GetSqlField(cols[i].Field)
+			field := a.getSelectField(cols[i].Field)
 			if field == "" {
 				return fmt.Errorf("%s:%v", InvalidSqlField, field)
 			}
@@ -274,7 +274,7 @@ func (a *AgGrid) buildGroupQuery(cols []RowGroupCol, keys []string) error {
 // ParseFilterModel 解析查询参数 并生成对应sql
 func (a *AgGrid) parseFilterModel() error {
 	for k, v := range a.Param.FilterModel {
-		field := a.Handler.GetSqlField(k)
+		field := a.getSelectField(k)
 		if field == "" {
 			return fmt.Errorf("%s : %v", InvalidSqlField, k)
 		}
