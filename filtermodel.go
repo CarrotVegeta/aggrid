@@ -58,7 +58,7 @@ func getFilterTypeHandler(filterType string) (FilterTypeHandler, error) {
 	if _, ok := FilterTypeHandlerM[filterType]; !ok {
 		return nil, fmt.Errorf("invalid filtertype : %v", filterType)
 	}
-	return FilterTypeHandlerM[filterType], nil
+	return FilterTypeHandlerM[filterType].New(), nil
 }
 
 func NewFilterTypeHandler(filterType string, c []byte) (FilterTypeHandler, error) {
@@ -76,4 +76,5 @@ type FilterTypeHandler interface {
 	Parse(c []byte) error
 	GetFilter() (any, error)
 	GetType() string
+	New() FilterTypeHandler
 }

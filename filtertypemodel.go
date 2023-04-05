@@ -9,6 +9,9 @@ type FilterTextModel struct {
 	Key        string `json:"key"`
 }
 
+func (ftm *FilterTextModel) New() FilterTypeHandler {
+	return &FilterTextModel{}
+}
 func (ftm *FilterTextModel) Parse(c []byte) error {
 	if err := json.Unmarshal(c, ftm); err != nil {
 		return err
@@ -30,6 +33,9 @@ type FilterDateModel struct {
 	Key        string `json:"key"`
 }
 
+func (fdm *FilterDateModel) New() FilterTypeHandler {
+	return &FilterDateModel{}
+}
 func (fdm *FilterDateModel) Parse(c []byte) error {
 	if err := json.Unmarshal(c, fdm); err != nil {
 		return err
@@ -57,6 +63,9 @@ type FilterNumberModel struct {
 	Key        string `json:"key"`
 }
 
+func (fnm *FilterNumberModel) New() FilterTypeHandler {
+	return &FilterNumberModel{}
+}
 func (fnm *FilterNumberModel) Parse(c []byte) error {
 	if err := json.Unmarshal(c, fnm); err != nil {
 		return err
@@ -83,6 +92,9 @@ type FilterArrayModel struct {
 	Key        string `json:"key"`
 }
 
+func (fnm *FilterArrayModel) New() FilterTypeHandler {
+	return &FilterArrayModel{}
+}
 func (fnm *FilterArrayModel) Parse(c []byte) error {
 	if err := json.Unmarshal(c, fnm); err != nil {
 		return err
