@@ -33,96 +33,29 @@ type RowGroupCol struct {
 	Field       string `json:"field"`
 }
 type AgGrid struct {
-	Param   *Param
-	Handler AgGHandler
-	db      *gorm.DB
-	qf      *QueryFilter
-	sortStr string
+	Param       *Param
+	Handler     AgGHandler
+	selectField map[string]struct{}
+	groupField  map[string]struct{}
+	orderField  map[string]string
+	db          *gorm.DB
+	qf          *QueryFilter
+	sortStr     string
 }
 
 func NewAgGHandler(model AgGHandler, param *Param) *AgGrid {
 	ag := &AgGrid{
-		Param:   &Param{},
-		qf:      &QueryFilter{},
-		Handler: model,
+		Param:       &Param{},
+		qf:          &QueryFilter{},
+		Handler:     model,
+		selectField: make(map[string]struct{}),
+		groupField:  make(map[string]struct{}),
+		orderField:  make(map[string]string),
 	}
 	if param != nil {
 		ag.Param = param
 	}
 	return ag
-}
-
-type SqlBuilder struct {
-	SelectSql string
-	GroupSql  string
-	QuerySql  string
-	SortSql   string
-	FromSql   string
-	Args      []any
-	sqlStr    strings.Builder
-	Err       error
-}
-
-func (sb *SqlBuilder) WriteSqlStr(s string) {
-	sb.sqlStr.WriteString(s + " ")
-}
-func (sb *SqlBuilder) BuildSelectSql() *SqlBuilder {
-	sb.WriteSqlStr(sb.SelectSql)
-	if sb.SelectSql == "" {
-		sb.WriteSqlStr("SELECT * ")
-	}
-	return sb
-}
-func (sb *SqlBuilder) BuildFromSql() *SqlBuilder {
-	if sb.FromSql == "" {
-		sb.Err = InvalidFromSql
-	}
-	sb.WriteSqlStr(sb.FromSql + " ")
-	return sb
-}
-func (sb *SqlBuilder) BuildQuerySql() *SqlBuilder {
-	sb.WriteSqlStr(sb.QuerySql)
-	return sb
-}
-func (sb *SqlBuilder) BuildGroupSql() *SqlBuilder {
-	sb.WriteSqlStr(sb.GroupSql)
-	return sb
-}
-func (sb *SqlBuilder) BuildSortSql() *SqlBuilder {
-	sb.WriteSqlStr(sb.SortSql)
-	return sb
-}
-func (sb *SqlBuilder) SqlString() string {
-	return sb.sqlStr.String()
-}
-func (sb *SqlBuilder) BuildNoLimitSql() *SqlBuilder {
-	sb.BuildSelectSql().BuildFromSql().BuildQuerySql().BuildGroupSql().BuildSortSql()
-	return sb
-
-}
-func (sb *SqlBuilder) ToSqlString() (string, error) {
-	if sb.Err != nil {
-		return "", sb.Err
-	}
-	sqlStr := sb.SqlString()
-	sb.sqlStr.Reset()
-	return sqlStr, nil
-}
-func (sb *SqlBuilder) BuildAndLimitSql(offset, pageSize int) *SqlBuilder {
-	sb.sqlStr.Reset()
-	sb.BuildNoLimitSql()
-	sb.BuildSelectSql().BuildFromSql().BuildQuerySql().BuildGroupSql().BuildSortSql().BuildLimitSql(offset, pageSize)
-	return sb
-}
-func (sb *SqlBuilder) BuildLimitSql(offset, pageSize int) *SqlBuilder {
-	sb.WriteSqlStr(BuildLimitSql(offset, pageSize))
-	return sb
-}
-func (sb *SqlBuilder) BuildCountSql() *SqlBuilder {
-	sqlStr := BuildCountSql(sb.SqlString())
-	sb.sqlStr.Reset()
-	sb.WriteSqlStr(sqlStr)
-	return sb
 }
 
 func (a *AgGrid) Use(db *gorm.DB) *AgGrid {
@@ -153,6 +86,55 @@ func (a *AgGrid) ExecSql(sb *SqlBuilder) (data []map[string]any, count int64, er
 		return nil, 0, fmt.Errorf("%s:%v", RawSqlError, err)
 	}
 	return
+}
+
+func (a *AgGrid) parse() {
+	fn := GetStructTagField(a.Handler, "ag")
+	a.parseSelectField(fn)
+	a.parseGroupField(fn)
+	a.parseOrderField(fn)
+}
+func (a *AgGrid) parseSelectField(fn StructTag) {
+	for k, _ := range fn {
+		s := a.getAgTagValue(k, "select")
+		if s != "" {
+			a.selectField[s] = struct{}{}
+		}
+	}
+}
+func (a *AgGrid) parseGroupField(fn StructTag) {
+	for k, _ := range fn {
+		s := a.getAgTagValue(k, "group")
+		if s == "" {
+			a.getAgTagValue(k, "select")
+		}
+		if s != "" {
+			a.groupField[s] = struct{}{}
+		}
+	}
+}
+func (a *AgGrid) parseOrderField(fn StructTag) {
+	for k, _ := range fn {
+		s := a.getAgTagValue(k, "order")
+		if s == "" {
+			a.getAgTagValue(k, "select")
+		}
+		if s != "" {
+			a.orderField[s] = ""
+		}
+	}
+}
+func (a *AgGrid) getAgTagValue(agTag, tag string) string {
+	tags := strings.Split(agTag, ";")
+	for _, v := range tags {
+		ts := strings.Split(v, ":")
+		if strings.Trim(ts[0], " ") == tag {
+			if len(ts) > 1 {
+				return ts[1]
+			}
+		}
+	}
+	return ""
 }
 func (a *AgGrid) buildGroupSelect() (string, error) {
 	gn, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
@@ -232,47 +214,17 @@ func (a *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (string, error)
 
 // BuildSortSql 生成排序sql
 func (a *AgGrid) BuildSortSql(sortModels []SortModel) (string, error) {
-	//groupName, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
-	//if err != nil {
-	//	return "", nil
-	//}
 	var sortStr string
-	if len(sortModels) > 0 {
-		if len(a.Param.RowGroupCols) > 0 && len(a.Param.RowGroupCols) != len(a.Param.GroupKeys) {
-
-			var sm SortModel
-			if len(a.Param.GroupKeys) == 0 {
-				sm = sortModels[0]
-			} else {
-				if len(a.Param.GroupKeys) != len(sortModels) {
-					sm = sortModels[len(a.Param.GroupKeys)]
-				}
-			}
-			gn, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
-			if err != nil {
-				return "", err
-			}
-			if gn != sm.ColId {
-				return "", err
-			}
-			ss, err := a.buildSortStr(sm.ColId, sm.Sort)
-			if err != nil {
-				return "", err
-			}
-			sortStr = ss
-		} else {
-			for _, v := range sortModels {
-				ss, err := a.buildSortStr(v.ColId, v.Sort)
-				if err != nil {
-					return "", err
-				}
-				if sortStr == "" {
-					sortStr = ss
-					continue
-				}
-				sortStr += "," + ss
-			}
+	for _, v := range sortModels {
+		ss, err := a.buildSortStr(v.ColId, v.Sort)
+		if err != nil {
+			return "", err
 		}
+		if sortStr == "" {
+			sortStr = ss
+			continue
+		}
+		sortStr += "," + ss
 	}
 	if sortStr == "" {
 		return sortStr, nil
