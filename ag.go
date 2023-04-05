@@ -139,6 +139,13 @@ func (a *AgGrid) getAgTagValue(agTag, tag string) string {
 func (a *AgGrid) getSelectField(k string) string {
 	return a.selectField[k]
 }
+func (a *AgGrid) getSelectFields() []string {
+	fields := make([]string, len(a.selectField))
+	for _, v := range a.selectField {
+		fields = append(fields, v)
+	}
+	return fields
+}
 func (a *AgGrid) getGroupField(k string) string {
 	return a.groupField[k]
 }
@@ -148,7 +155,7 @@ func (a *AgGrid) buildGroupSelect() (string, error) {
 }
 func (a *AgGrid) BuildSelect() string {
 	var selectSql string
-	for _, v := range a.Handler.GetSelectField() {
+	for _, v := range a.getSelectFields() {
 		if selectSql == "" {
 			selectSql = v
 			continue
