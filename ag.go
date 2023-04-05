@@ -35,8 +35,8 @@ type RowGroupCol struct {
 type AgGrid struct {
 	Param       *Param
 	Handler     AgGHandler
-	selectField map[string]struct{}
-	groupField  map[string]struct{}
+	selectField map[string]string
+	groupField  map[string]string
 	orderField  map[string]string
 	db          *gorm.DB
 	qf          *QueryFilter
@@ -48,8 +48,8 @@ func NewAgGHandler(model AgGHandler, param *Param) *AgGrid {
 		Param:       &Param{},
 		qf:          &QueryFilter{},
 		Handler:     model,
-		selectField: make(map[string]struct{}),
-		groupField:  make(map[string]struct{}),
+		selectField: make(map[string]string),
+		groupField:  make(map[string]string),
 		orderField:  make(map[string]string),
 	}
 	if param != nil {
@@ -95,21 +95,21 @@ func (a *AgGrid) parse() {
 	a.parseOrderField(fn)
 }
 func (a *AgGrid) parseSelectField(fn StructTag) {
-	for k, _ := range fn {
+	for k, v := range fn {
 		s := a.getAgTagValue(k, "select")
 		if s != "" {
-			a.selectField[s] = struct{}{}
+			a.selectField[v.Get("json")] = s
 		}
 	}
 }
 func (a *AgGrid) parseGroupField(fn StructTag) {
-	for k, _ := range fn {
+	for k, v := range fn {
 		s := a.getAgTagValue(k, "group")
 		if s == "" {
 			a.getAgTagValue(k, "select")
 		}
 		if s != "" {
-			a.groupField[s] = struct{}{}
+			a.groupField[v.Get("json")] = s
 		}
 	}
 }
@@ -135,6 +135,9 @@ func (a *AgGrid) getAgTagValue(agTag, tag string) string {
 		}
 	}
 	return ""
+}
+func (a *AgGrid) getSelectField() {
+
 }
 func (a *AgGrid) buildGroupSelect() (string, error) {
 	gn, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
