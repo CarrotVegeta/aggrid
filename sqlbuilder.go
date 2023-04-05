@@ -10,24 +10,46 @@ type SqlBuilder struct {
 	FromSql   string
 	Args      []any
 	sqlStr    strings.Builder
-	Err       error
 }
 
+func NewSqlBuilder() *SqlBuilder {
+	return &SqlBuilder{}
+}
+func (sb *SqlBuilder) SetSelectSql(selectSql string) *SqlBuilder {
+	sb.SelectSql = selectSql
+	return sb
+}
+func (sb *SqlBuilder) SetGroupSql(groupSql string) *SqlBuilder {
+	sb.GroupSql = groupSql
+	return sb
+}
+func (sb *SqlBuilder) SetQuerySql(querySql string) *SqlBuilder {
+	sb.QuerySql = querySql
+	return sb
+}
+func (sb *SqlBuilder) SetSortSql(sortSql string) *SqlBuilder {
+	sb.SortSql = sortSql
+	return sb
+}
+func (sb *SqlBuilder) SetFromSql(fromSql string) *SqlBuilder {
+	sb.FromSql = fromSql
+	return sb
+}
 func (sb *SqlBuilder) WriteSqlStr(s string) {
+	if s == "" {
+		return
+	}
 	sb.sqlStr.WriteString(s + " ")
 }
 func (sb *SqlBuilder) BuildSelectSql() *SqlBuilder {
 	sb.WriteSqlStr(sb.SelectSql)
 	if sb.SelectSql == "" {
-		sb.WriteSqlStr("SELECT * ")
+		sb.WriteSqlStr("SELECT *")
 	}
 	return sb
 }
 func (sb *SqlBuilder) BuildFromSql() *SqlBuilder {
-	if sb.FromSql == "" {
-		sb.Err = InvalidFromSql
-	}
-	sb.WriteSqlStr(sb.FromSql + " ")
+	sb.WriteSqlStr(sb.FromSql)
 	return sb
 }
 func (sb *SqlBuilder) BuildQuerySql() *SqlBuilder {
@@ -50,13 +72,10 @@ func (sb *SqlBuilder) BuildNoLimitSql() *SqlBuilder {
 	return sb
 
 }
-func (sb *SqlBuilder) ToSqlString() (string, error) {
-	if sb.Err != nil {
-		return "", sb.Err
-	}
+func (sb *SqlBuilder) ToSqlString() string {
 	sqlStr := sb.SqlString()
 	sb.sqlStr.Reset()
-	return sqlStr, nil
+	return sqlStr
 }
 func (sb *SqlBuilder) BuildAndLimitSql(offset, pageSize int) *SqlBuilder {
 	sb.sqlStr.Reset()

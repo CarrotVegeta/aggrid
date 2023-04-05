@@ -11,8 +11,6 @@ import (
 // GetSqlField获取前端传来的字段所对应的sql 字段，如果没有则无效
 // GetSelectField 获取需要查询的字段
 type AgGHandler interface {
-	GetSqlField(k string) string
-	GetSelectField() []string
 }
 
 type Param struct {
@@ -33,14 +31,25 @@ type RowGroupCol struct {
 	Field       string `json:"field"`
 }
 type AgGrid struct {
-	Param       *Param
-	Handler     AgGHandler
-	selectField map[string]string
-	groupField  map[string]string
-	orderField  map[string]string
-	db          *gorm.DB
-	qf          *QueryFilter
-	sortStr     string
+	Param          *Param
+	Handler        AgGHandler
+	selectField    map[string]string
+	groupField     map[string]string
+	orderField     map[string]string
+	db             *gorm.DB
+	qf             *QueryFilter
+	sqlStr         string
+	sqlCountStr    string
+	sqlLimitSqlStr string
+	Error          error
+}
+
+// AddError add error to ag
+func (a *AgGrid) AddError(err error) {
+	if a.Error == nil {
+		a.Error = err
+	}
+	a.Error = fmt.Errorf("%v; %w", a.Error, err)
 }
 
 func NewAgGHandler(model AgGHandler, param *Param) *AgGrid {
@@ -55,6 +64,7 @@ func NewAgGHandler(model AgGHandler, param *Param) *AgGrid {
 	if param != nil {
 		ag.Param = param
 	}
+	ag.parse()
 	return ag
 }
 
@@ -62,30 +72,33 @@ func (a *AgGrid) Use(db *gorm.DB) *AgGrid {
 	a.db = db
 	return a
 }
-func (a *AgGrid) ExecSql(sb *SqlBuilder) (data []map[string]any, count int64, err error) {
-	var (
-		sqlStr, sqlCountStr, sqlLimitSqlStr string
-	)
-	sqlStr, err = sb.BuildNoLimitSql().ToSqlString()
-	sqlCountStr, err = sb.BuildCountSql().ToSqlString()
+func (a *AgGrid) Raw(sb *SqlBuilder) *AgGrid {
+	a.sqlStr = sb.BuildNoLimitSql().ToSqlString()
+	a.sqlCountStr = sb.BuildCountSql().ToSqlString()
 	if a.Param.EndRow-a.Param.StartRow != 0 {
-		sqlLimitSqlStr, err = sb.BuildAndLimitSql(a.Param.StartRow, a.Param.EndRow-a.Param.StartRow).ToSqlString()
+		a.sqlLimitSqlStr = sb.BuildAndLimitSql(a.Param.StartRow, a.Param.EndRow-a.Param.StartRow).ToSqlString()
 	}
+	return a
+}
+
+// todo 使用链式操作
+func (a *AgGrid) Count(sb *SqlBuilder, count int64) *AgGrid {
+	err := a.db.Raw(a.sqlCountStr, sb.Args...).Count(&count).Error
 	if err != nil {
-		return nil, 0, err
+		a.AddError(fmt.Errorf("ag grid count err:%v", err))
 	}
-	if err := a.db.Raw(sqlCountStr, sb.Args...).Scan(&count).Error; err != nil {
-		return nil, 0, err
+	return a
+}
+func (a *AgGrid) Find(sb *SqlBuilder, data any) *AgGrid {
+	if a.sqlLimitSqlStr != "" {
+		a.sqlStr = a.sqlLimitSqlStr
 	}
-	if sqlLimitSqlStr != "" {
-		sqlStr = sqlLimitSqlStr
-	}
-	db := a.db.Raw(sqlStr, sb.Args...)
-	err = db.Find(&data).Error
+	db := a.db.Raw(a.sqlStr, sb.Args...)
+	err := db.Find(&data).Error
 	if err != nil {
-		return nil, 0, fmt.Errorf("%s:%v", RawSqlError, err)
+		a.AddError(fmt.Errorf("%s:%v", RawSqlError, err))
 	}
-	return
+	return a
 }
 
 func (a *AgGrid) parse() {
@@ -105,7 +118,7 @@ func (a *AgGrid) parseGroupField(fn StructTag) {
 	for k, v := range fn {
 		s := a.getAgTagValue(k, "group")
 		if s == "" {
-			a.getAgTagValue(k, "select")
+			s = a.getAgTagValue(k, "select")
 		}
 		if s != "" {
 			a.groupField[v.Get("json")] = s
@@ -132,7 +145,7 @@ func (a *AgGrid) getOrderField(k string) string {
 	return a.orderField[k]
 }
 func (a *AgGrid) getSelectKeyFields() []*KeyField {
-	fields := make([]*KeyField, len(a.selectField))
+	fields := make([]*KeyField, 0, len(a.selectField))
 	for k, v := range a.selectField {
 		fields = append(fields, &KeyField{
 			Key:         k,
@@ -146,20 +159,25 @@ func (a *AgGrid) getGroupField(k string) string {
 }
 func (a *AgGrid) buildGroupSelect() (string, error) {
 	gn, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
+	if gn == nil {
+		return "", nil
+	}
 	a.setOrderField(gn)
 	return fmt.Sprintf("SELECT %s,COUNT(*) AS count", gn.SelectField), err
 }
 func (a *AgGrid) setOrderField(kf *KeyField) {
-	a.orderField[kf.Key] = kf.SelectField
+	if kf != nil {
+		a.orderField[kf.Key] = kf.SelectField
+	}
 }
-func (a *AgGrid) BuildSelect() string {
+func (a *AgGrid) buildSelect() string {
 	var selectSql string
 	for _, v := range a.getSelectKeyFields() {
+		a.setOrderField(v)
 		if selectSql == "" {
 			selectSql = v.SelectField
 			continue
 		}
-		a.setOrderField(v)
 		selectSql += "," + v.SelectField
 	}
 	if selectSql == "" {
@@ -167,11 +185,11 @@ func (a *AgGrid) BuildSelect() string {
 	}
 	return "SELECT " + selectSql
 }
-func (a *AgGrid) GetSelectSql() (string, error) {
+func (a *AgGrid) BuildSelectSql() (string, error) {
 	if len(a.Param.RowGroupCols) > 0 && len(a.Param.RowGroupCols) != len(a.Param.GroupKeys) {
 		return a.buildGroupSelect()
 	}
-	return a.BuildSelect(), nil
+	return a.buildSelect(), nil
 }
 
 // BuildGroupSql 如果分组参数大于0 并且 分组参数不等于key值，则拼接groupBySql
@@ -228,9 +246,9 @@ func (a *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (*KeyField, err
 }
 
 // BuildSortSql 生成排序sql
-func (a *AgGrid) BuildSortSql(sortModels []SortModel) (string, error) {
+func (a *AgGrid) BuildSortSql() (string, error) {
 	var sortStr string
-	for _, v := range sortModels {
+	for _, v := range a.Param.SortModels {
 		orderField := a.getOrderField(v.ColId)
 		if orderField == "" {
 			continue
