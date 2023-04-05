@@ -92,7 +92,6 @@ func (a *AgGrid) parse() {
 	fn := GetStructTagField(a.Handler, "ag")
 	a.parseSelectField(fn)
 	a.parseGroupField(fn)
-	a.parseOrderField(fn)
 }
 func (a *AgGrid) parseSelectField(fn StructTag) {
 	for k, v := range fn {
@@ -113,17 +112,7 @@ func (a *AgGrid) parseGroupField(fn StructTag) {
 		}
 	}
 }
-func (a *AgGrid) parseOrderField(fn StructTag) {
-	for k, _ := range fn {
-		s := a.getAgTagValue(k, "order")
-		if s == "" {
-			a.getAgTagValue(k, "select")
-		}
-		if s != "" {
-			a.orderField[s] = ""
-		}
-	}
-}
+
 func (a *AgGrid) getAgTagValue(agTag, tag string) string {
 	tags := strings.Split(agTag, ";")
 	for _, v := range tags {
@@ -139,10 +128,16 @@ func (a *AgGrid) getAgTagValue(agTag, tag string) string {
 func (a *AgGrid) getSelectField(k string) string {
 	return a.selectField[k]
 }
-func (a *AgGrid) getSelectFields() []string {
-	fields := make([]string, len(a.selectField))
-	for _, v := range a.selectField {
-		fields = append(fields, v)
+func (a *AgGrid) getOrderField(k string) string {
+	return a.orderField[k]
+}
+func (a *AgGrid) getSelectKeyFields() []*KeyField {
+	fields := make([]*KeyField, len(a.selectField))
+	for k, v := range a.selectField {
+		fields = append(fields, &KeyField{
+			Key:         k,
+			SelectField: v,
+		})
 	}
 	return fields
 }
@@ -151,16 +146,21 @@ func (a *AgGrid) getGroupField(k string) string {
 }
 func (a *AgGrid) buildGroupSelect() (string, error) {
 	gn, err := a.getGroupName(a.Param.RowGroupCols, a.Param.GroupKeys)
-	return fmt.Sprintf("SELECT %s,COUNT(*) AS count", gn), err
+	a.setOrderField(gn)
+	return fmt.Sprintf("SELECT %s,COUNT(*) AS count", gn.SelectField), err
+}
+func (a *AgGrid) setOrderField(kf *KeyField) {
+	a.orderField[kf.Key] = kf.SelectField
 }
 func (a *AgGrid) BuildSelect() string {
 	var selectSql string
-	for _, v := range a.getSelectFields() {
+	for _, v := range a.getSelectKeyFields() {
 		if selectSql == "" {
-			selectSql = v
+			selectSql = v.SelectField
 			continue
 		}
-		selectSql += "," + v
+		a.setOrderField(v)
+		selectSql += "," + v.SelectField
 	}
 	if selectSql == "" {
 		selectSql = "*"
@@ -181,10 +181,10 @@ func (a *AgGrid) BuildGroupSql() (string, error) {
 		if err != nil {
 			return "", nil
 		}
-		if gn == "" {
+		if gn.SelectField == "" {
 			return "", nil
 		}
-		groupBySql := "GROUP BY " + gn
+		groupBySql := "GROUP BY " + gn.SelectField
 		return groupBySql, nil
 	}
 	return "", nil
@@ -206,9 +206,10 @@ func (a *AgGrid) BuildQuerySql() (query string, args []any, err error) {
 }
 
 // getGroupName 获取分组条件
-func (a *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (string, error) {
+func (a *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (*KeyField, error) {
+	g := &KeyField{}
 	if len(cols) == 0 {
-		return "", nil
+		return nil, nil
 	}
 	groupName := cols[0].Field
 	if len(keys) > 0 {
@@ -218,21 +219,23 @@ func (a *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (string, error)
 			groupName = cols[len(keys)].Field
 		}
 	}
-	field := a.getGroupField(groupName)
-	if field == "" {
-		return "", fmt.Errorf("%s:%v", InvalidGroupField, groupName)
+	g.Key = groupName
+	g.SelectField = a.getGroupField(groupName)
+	if g.SelectField == "" {
+		return nil, fmt.Errorf("%s:%v", InvalidGroupField, groupName)
 	}
-	return field, nil
+	return g, nil
 }
 
 // BuildSortSql 生成排序sql
 func (a *AgGrid) BuildSortSql(sortModels []SortModel) (string, error) {
 	var sortStr string
 	for _, v := range sortModels {
-		ss, err := a.buildSortStr(v.ColId, v.Sort)
-		if err != nil {
-			return "", err
+		orderField := a.getOrderField(v.ColId)
+		if orderField == "" {
+			continue
 		}
+		ss := fmt.Sprintf("%s %s", orderField, v.Sort)
 		if sortStr == "" {
 			sortStr = ss
 			continue
@@ -244,16 +247,6 @@ func (a *AgGrid) BuildSortSql(sortModels []SortModel) (string, error) {
 	}
 	sortStr = "ORDER BY " + sortStr
 	return sortStr, nil
-}
-func (a *AgGrid) buildSortStr(colId, sort string) (string, error) {
-	k := a.Handler.GetSqlField(colId)
-	if k == "" {
-		return "", fmt.Errorf("%s:%v", InvalidSqlField, colId)
-	}
-	if !validSort(sort) {
-		return "", fmt.Errorf("%s : %v", InvalidSortField, k)
-	}
-	return fmt.Sprintf("%s %s", k, sort), nil
 }
 
 // buildGroupQuery 生成组合查询sql
