@@ -1,19 +1,20 @@
 package agtwo
 
-import "strings"
+import (
+	"strings"
+)
 
 type SqlBuilder struct {
-	SelectSql string
-	GroupSql  string
-	QuerySql  string
-	SortSql   string
-	FromSql   string
-	Args      []any
-	sqlStr    strings.Builder
+	SelectSql   string
+	GroupSql    string
+	QueryFilter *QueryFilter
+	SortSql     string
+	FromSql     string
+	sqlStr      strings.Builder
 }
 
 func NewSqlBuilder() *SqlBuilder {
-	return &SqlBuilder{}
+	return &SqlBuilder{QueryFilter: &QueryFilter{}}
 }
 func (sb *SqlBuilder) SetSelectSql(selectSql string) *SqlBuilder {
 	sb.SelectSql = selectSql
@@ -23,8 +24,11 @@ func (sb *SqlBuilder) SetGroupSql(groupSql string) *SqlBuilder {
 	sb.GroupSql = groupSql
 	return sb
 }
-func (sb *SqlBuilder) SetQuerySql(querySql string) *SqlBuilder {
-	sb.QuerySql = querySql
+func (sb *SqlBuilder) SetQueryFilter(qf *QueryFilter) *SqlBuilder {
+	if qf == nil {
+		return sb
+	}
+	sb.QueryFilter = qf
 	return sb
 }
 func (sb *SqlBuilder) SetSortSql(sortSql string) *SqlBuilder {
@@ -41,34 +45,46 @@ func (sb *SqlBuilder) WriteSqlStr(s string) {
 	}
 	sb.sqlStr.WriteString(s + " ")
 }
-func (sb *SqlBuilder) BuildSelectSql() *SqlBuilder {
+func (sb *SqlBuilder) buildSelectSql() *SqlBuilder {
 	sb.WriteSqlStr(sb.SelectSql)
 	if sb.SelectSql == "" {
 		sb.WriteSqlStr("SELECT *")
 	}
 	return sb
 }
-func (sb *SqlBuilder) BuildFromSql() *SqlBuilder {
+func (sb *SqlBuilder) buildFromSql() *SqlBuilder {
 	sb.WriteSqlStr(sb.FromSql)
 	return sb
 }
-func (sb *SqlBuilder) BuildQuerySql() *SqlBuilder {
-	sb.WriteSqlStr(sb.QuerySql)
+func (sb *SqlBuilder) buildQuerySql() *SqlBuilder {
+	sb.WriteSqlStr(sb.QueryFilter.Query)
 	return sb
 }
-func (sb *SqlBuilder) BuildGroupSql() *SqlBuilder {
+func (sb *SqlBuilder) buildGroupSql() *SqlBuilder {
 	sb.WriteSqlStr(sb.GroupSql)
 	return sb
 }
-func (sb *SqlBuilder) BuildSortSql() *SqlBuilder {
+func (sb *SqlBuilder) buildSortSql() *SqlBuilder {
 	sb.WriteSqlStr(sb.SortSql)
 	return sb
 }
+func (sb *SqlBuilder) buildLimitSql(offset, pageSize int) *SqlBuilder {
+	sb.WriteSqlStr(BuildLimitSql(offset, pageSize))
+	return sb
+}
+func (sb *SqlBuilder) BuildCountSql() *SqlBuilder {
+	sb.buildSelectSql().buildFromSql().buildQuerySql().buildGroupSql().buildSortSql()
+	sqlStr := BuildCountSql(sb.SqlString())
+	sb.sqlStr.Reset()
+	sb.WriteSqlStr(sqlStr)
+	return sb
+}
+
 func (sb *SqlBuilder) SqlString() string {
 	return sb.sqlStr.String()
 }
 func (sb *SqlBuilder) BuildNoLimitSql() *SqlBuilder {
-	sb.BuildSelectSql().BuildFromSql().BuildQuerySql().BuildGroupSql().BuildSortSql()
+	sb.buildSelectSql().buildFromSql().buildQuerySql().buildGroupSql().buildSortSql()
 	return sb
 
 }
@@ -79,17 +95,6 @@ func (sb *SqlBuilder) ToSqlString() string {
 }
 func (sb *SqlBuilder) BuildAndLimitSql(offset, pageSize int) *SqlBuilder {
 	sb.sqlStr.Reset()
-	sb.BuildNoLimitSql()
-	sb.BuildSelectSql().BuildFromSql().BuildQuerySql().BuildGroupSql().BuildSortSql().BuildLimitSql(offset, pageSize)
-	return sb
-}
-func (sb *SqlBuilder) BuildLimitSql(offset, pageSize int) *SqlBuilder {
-	sb.WriteSqlStr(BuildLimitSql(offset, pageSize))
-	return sb
-}
-func (sb *SqlBuilder) BuildCountSql() *SqlBuilder {
-	sqlStr := BuildCountSql(sb.SqlString())
-	sb.sqlStr.Reset()
-	sb.WriteSqlStr(sqlStr)
+	sb.BuildNoLimitSql().buildLimitSql(offset, pageSize)
 	return sb
 }

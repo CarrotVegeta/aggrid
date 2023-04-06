@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gorm.io/gorm"
+	"reflect"
 	"strings"
 )
 
@@ -11,6 +12,7 @@ import (
 // GetSqlField获取前端传来的字段所对应的sql 字段，如果没有则无效
 // GetSelectField 获取需要查询的字段
 type AgGHandler interface {
+	BuildFromSql() string
 }
 
 type Param struct {
@@ -40,8 +42,8 @@ type AgGrid struct {
 	db             *gorm.DB
 	qf             *QueryFilter
 	sqlStr         string
-	sqlCountStr    string
 	sqlLimitSqlStr string
+	sb             *SqlBuilder
 	Error          error
 }
 
@@ -61,6 +63,8 @@ func NewAgGHandler(model AgGHandler, param *Param) *AgGrid {
 		filterField: make(map[string]string),
 		groupField:  make(map[string]string),
 		orderField:  make(map[string]string),
+		selectField: make(map[string]string),
+		sb:          NewSqlBuilder(),
 	}
 	if param != nil {
 		ag.Param = param
@@ -73,33 +77,78 @@ func (a *AgGrid) Use(db *gorm.DB) *AgGrid {
 	a.db = db
 	return a
 }
-func (a *AgGrid) Raw(sb *SqlBuilder) *AgGrid {
-	a.sqlStr = sb.BuildNoLimitSql().ToSqlString()
-	a.sqlCountStr = sb.BuildCountSql().ToSqlString()
-	if a.Param.EndRow-a.Param.StartRow != 0 {
-		a.sqlLimitSqlStr = sb.BuildAndLimitSql(a.Param.StartRow, a.Param.EndRow-a.Param.StartRow).ToSqlString()
-	}
-	return a
-}
 
-// todo 使用链式操作
-func (a *AgGrid) Count(sb *SqlBuilder, count int64) *AgGrid {
-	err := a.db.Raw(a.sqlCountStr, sb.Args...).Count(&count).Error
+func (a *AgGrid) Count(count *int64) *AgGrid {
+	sqlCountStr := a.SetSql().BuildCountSql().ToSqlString()
+	err := a.db.Raw(sqlCountStr, a.sb.QueryFilter.Args...).Count(count).Error
 	if err != nil {
 		a.AddError(fmt.Errorf("ag grid count err:%v", err))
 	}
 	return a
 }
-func (a *AgGrid) Find(sb *SqlBuilder, data any) *AgGrid {
-	if a.sqlLimitSqlStr != "" {
-		a.sqlStr = a.sqlLimitSqlStr
+func (a *AgGrid) SetSql() *SqlBuilder {
+	a.sb.sqlStr.Reset()
+	selectSql, err := a.BuildSelectSql()
+	if err != nil {
+		a.AddError(err)
+		return nil
 	}
-	db := a.db.Raw(a.sqlStr, sb.Args...)
-	err := db.Find(&data).Error
+	fromSql := a.BuildFromSql()
+	groupSql, err := a.BuildGroupSql()
+	if err != nil {
+		a.AddError(err)
+		return nil
+	}
+	a.sb.SetSelectSql(selectSql).SetFromSql(fromSql).SetGroupSql(groupSql)
+	return a.sb
+}
+
+func (a *AgGrid) Where(qf *QueryFilter) *AgGrid {
+	a.sb.SetQueryFilter(qf)
+	return a
+}
+
+func (a *AgGrid) Find(data any) *AgGrid {
+	a.sb = a.SetSql().BuildNoLimitSql()
+	if a.Param.EndRow-a.Param.StartRow != 0 {
+		a.sb.BuildAndLimitSql(a.Param.StartRow, a.Param.EndRow-a.Param.StartRow)
+	}
+	sqlStr := a.sb.ToSqlString()
+	var m []map[string]any
+	err := a.db.Raw(sqlStr, a.sb.QueryFilter.Args...).Find(&m).Error
 	if err != nil {
 		a.AddError(fmt.Errorf("%s:%v", RawSqlError, err))
+		return a
+	}
+	//if IsMap(data) {
+	//	data = m
+	//	return a
+	//}
+	bs, _ := json.Marshal(m)
+	if err := json.Unmarshal(bs, &data); err != nil {
+		a.AddError(fmt.Errorf("ag unmarshal result to data err :%v", err))
+		return a
 	}
 	return a
+}
+
+//	func IsMap(v any) bool {
+//		rt := reflect.TypeOf(v)
+//		if rt.Elem().Kind() == reflect.Slice || rt.Elem() == reflect.Array {
+//			rt.
+//		}
+//	}
+func IsStruct(v any) bool {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Slice {
+		if rv.Len() > 0 {
+			elem := rv.Index(0)
+			if elem.Kind() == reflect.Struct {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (a *AgGrid) parse() {
@@ -275,6 +324,9 @@ func (a *AgGrid) BuildSortSql() (string, error) {
 	}
 	sortStr = "ORDER BY " + sortStr
 	return sortStr, nil
+}
+func (a *AgGrid) BuildFromSql() string {
+	return a.Handler.BuildFromSql()
 }
 
 // buildGroupQuery 生成组合查询sql
