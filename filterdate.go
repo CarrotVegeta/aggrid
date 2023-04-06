@@ -97,7 +97,7 @@ func (fd *FilterDate) Equals(k string, v any, f ...F) *FilterDate {
 	startTime, _ := time.ParseInLocation("2006-01-02 15:04:05", v.(string), time.Local)
 	lTime, _ := time.ParseInLocation("2006-01-02 15:04:05", v.(string), time.Local)
 	endTime := lTime.AddDate(0, 0, 1).UnixMilli()
-	fd.QF.And(fmt.Sprintf("%s >= ? AND %s <= ? ", k, k), startTime.UnixMilli(), endTime)
+	fd.QF.And(fmt.Sprintf("%s >= ? AND %s <= ? ", k, k), startTime, endTime)
 	return fd
 }
 
@@ -110,6 +110,6 @@ func (fd *FilterDate) LessThan(k string, v any, f ...F) *FilterDate {
 	}
 	tt, _ := time.Parse("2006-01-02 15:04:05", v.(string))
 	query := fmt.Sprintf("%s < ? ", k)
-	fd.QF.And(query, tt.UnixMilli())
+	fd.QF.And(query, tt)
 	return fd
 }

@@ -1,6 +1,6 @@
 package agtwo
 
 type KeyField struct {
-	Key         string
-	SelectField string
+	Key   string
+	Field string
 }

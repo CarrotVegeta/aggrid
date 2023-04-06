@@ -37,9 +37,10 @@ func TestAgGrid(t *testing.T) {
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
+	querySql, err := ag.BuildQuerySql()
 	sortSql, err := ag.BuildSortSql()
 	sb := &SqlBuilder{}
-	sb.SetSelectSql(selectSql).SetSortSql(sortSql).SetFromSql("FROM user")
+	sb.SetSelectSql(selectSql).SetQuerySql(querySql.Query).SetSortSql(sortSql).SetFromSql("FROM user")
 	sql := sb.BuildNoLimitSql().ToSqlString()
 	if err != nil {
 		t.Fatalf(err.Error())

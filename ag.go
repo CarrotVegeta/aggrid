@@ -34,6 +34,7 @@ type AgGrid struct {
 	Param          *Param
 	Handler        AgGHandler
 	selectField    map[string]string
+	filterField    map[string]string
 	groupField     map[string]string
 	orderField     map[string]string
 	db             *gorm.DB
@@ -57,7 +58,7 @@ func NewAgGHandler(model AgGHandler, param *Param) *AgGrid {
 		Param:       &Param{},
 		qf:          &QueryFilter{},
 		Handler:     model,
-		selectField: make(map[string]string),
+		filterField: make(map[string]string),
 		groupField:  make(map[string]string),
 		orderField:  make(map[string]string),
 	}
@@ -103,14 +104,23 @@ func (a *AgGrid) Find(sb *SqlBuilder, data any) *AgGrid {
 
 func (a *AgGrid) parse() {
 	fn := GetStructTagField(a.Handler, "ag")
-	a.parseSelectField(fn)
+	a.parseFilterField(fn)
 	a.parseGroupField(fn)
+	a.parseSelectField(fn)
 }
 func (a *AgGrid) parseSelectField(fn StructTag) {
 	for k, v := range fn {
 		s := a.getAgTagValue(k, "select")
 		if s != "" {
 			a.selectField[v.Get("json")] = s
+		}
+	}
+}
+func (a *AgGrid) parseFilterField(fn StructTag) {
+	for k, v := range fn {
+		s := a.getAgTagValue(k, "filter")
+		if s != "" {
+			a.filterField[v.Get("json")] = s
 		}
 	}
 }
@@ -138,18 +148,18 @@ func (a *AgGrid) getAgTagValue(agTag, tag string) string {
 	}
 	return ""
 }
-func (a *AgGrid) getSelectField(k string) string {
-	return a.selectField[k]
+func (a *AgGrid) getFilterField(k string) string {
+	return a.filterField[k]
 }
 func (a *AgGrid) getOrderField(k string) string {
 	return a.orderField[k]
 }
 func (a *AgGrid) getSelectKeyFields() []*KeyField {
-	fields := make([]*KeyField, 0, len(a.selectField))
+	fields := make([]*KeyField, 0, len(a.filterField))
 	for k, v := range a.selectField {
 		fields = append(fields, &KeyField{
-			Key:         k,
-			SelectField: v,
+			Key:   k,
+			Field: v,
 		})
 	}
 	return fields
@@ -163,11 +173,11 @@ func (a *AgGrid) buildGroupSelect() (string, error) {
 		return "", nil
 	}
 	a.setOrderField(gn)
-	return fmt.Sprintf("SELECT %s,COUNT(*) AS count", gn.SelectField), err
+	return fmt.Sprintf("SELECT %s,COUNT(*) AS count", gn.Field), err
 }
 func (a *AgGrid) setOrderField(kf *KeyField) {
 	if kf != nil {
-		a.orderField[kf.Key] = kf.SelectField
+		a.orderField[kf.Key] = kf.Field
 	}
 }
 func (a *AgGrid) buildSelect() string {
@@ -175,10 +185,10 @@ func (a *AgGrid) buildSelect() string {
 	for _, v := range a.getSelectKeyFields() {
 		a.setOrderField(v)
 		if selectSql == "" {
-			selectSql = v.SelectField
+			selectSql = v.Field
 			continue
 		}
-		selectSql += "," + v.SelectField
+		selectSql += "," + v.Field
 	}
 	if selectSql == "" {
 		selectSql = "*"
@@ -199,28 +209,28 @@ func (a *AgGrid) BuildGroupSql() (string, error) {
 		if err != nil {
 			return "", nil
 		}
-		if gn.SelectField == "" {
+		if gn.Field == "" {
 			return "", nil
 		}
-		groupBySql := "GROUP BY " + gn.SelectField
+		groupBySql := "GROUP BY " + gn.Field
 		return groupBySql, nil
 	}
 	return "", nil
 }
-func (a *AgGrid) BuildQuerySql() (query string, args []any, err error) {
+func (a *AgGrid) BuildQuerySql() (qf *QueryFilter, err error) {
 	err = a.buildGroupQuery(a.Param.RowGroupCols, a.Param.GroupKeys)
 	if err != nil {
-		return "", nil, nil
+		return
 	}
 	err = a.parseFilterModel()
 	if err != nil {
-		return "", nil, err
+		return
 	}
 	if a.qf.Query == "" {
-		return "", nil, nil
+		return
 	}
-	query = "WHERE " + a.qf.Query
-	return query, a.qf.Args, nil
+	a.qf.Query = "WHERE " + a.qf.Query
+	return a.qf, nil
 }
 
 // getGroupName 获取分组条件
@@ -238,8 +248,8 @@ func (a *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (*KeyField, err
 		}
 	}
 	g.Key = groupName
-	g.SelectField = a.getGroupField(groupName)
-	if g.SelectField == "" {
+	g.Field = a.getGroupField(groupName)
+	if g.Field == "" {
 		return nil, fmt.Errorf("%s:%v", InvalidGroupField, groupName)
 	}
 	return g, nil
@@ -271,7 +281,7 @@ func (a *AgGrid) BuildSortSql() (string, error) {
 func (a *AgGrid) buildGroupQuery(cols []RowGroupCol, keys []string) error {
 	if len(cols) > 0 && len(keys) > 0 {
 		for i, v := range keys {
-			field := a.getSelectField(cols[i].Field)
+			field := a.getFilterField(cols[i].Field)
 			if field == "" {
 				return fmt.Errorf("%s:%v", InvalidSqlField, field)
 			}
@@ -285,7 +295,7 @@ func (a *AgGrid) buildGroupQuery(cols []RowGroupCol, keys []string) error {
 // ParseFilterModel 解析查询参数 并生成对应sql
 func (a *AgGrid) parseFilterModel() error {
 	for k, v := range a.Param.FilterModel {
-		field := a.getSelectField(k)
+		field := a.getFilterField(k)
 		if field == "" {
 			return fmt.Errorf("%s : %v", InvalidSqlField, k)
 		}
