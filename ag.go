@@ -8,9 +8,7 @@ import (
 	"strings"
 )
 
-// AgGHandler
-// GetSqlField获取前端传来的字段所对应的sql 字段，如果没有则无效
-// GetSelectField 获取需要查询的字段
+// AgGHandler aggrid查询
 type AgGHandler interface {
 	BuildFromSql() string
 }
@@ -37,6 +35,7 @@ type AgGrid struct {
 	Handler        AgGHandler
 	selectField    map[string]string
 	filterField    map[string]string
+	havingField    map[string]string
 	groupField     map[string]string
 	orderField     map[string]string
 	db             *gorm.DB
@@ -61,6 +60,7 @@ func NewAgGHandler(model AgGHandler, param *Param) *AgGrid {
 		qf:          &QueryFilter{},
 		Handler:     model,
 		filterField: make(map[string]string),
+		havingField: make(map[string]string),
 		groupField:  make(map[string]string),
 		orderField:  make(map[string]string),
 		selectField: make(map[string]string),
@@ -173,6 +173,14 @@ func (a *AgGrid) parseFilterField(fn StructTag) {
 		}
 	}
 }
+func (a *AgGrid) parseHavingField(fn StructTag) {
+	for k, v := range fn {
+		s := a.getAgTagValue(k, "having")
+		if s != "" {
+			a.filterField[v.Get("json")] = s
+		}
+	}
+}
 func (a *AgGrid) parseGroupField(fn StructTag) {
 	for k, v := range fn {
 		s := a.getAgTagValue(k, "group")
@@ -199,6 +207,9 @@ func (a *AgGrid) getAgTagValue(agTag, tag string) string {
 }
 func (a *AgGrid) getFilterField(k string) string {
 	return a.filterField[k]
+}
+func (a *AgGrid) getHavingField(k string) string {
+	return a.havingField[k]
 }
 func (a *AgGrid) getOrderField(k string) string {
 	return a.orderField[k]
@@ -281,6 +292,21 @@ func (a *AgGrid) BuildQuerySql() (qf *QueryFilter, err error) {
 	a.qf.Query = "WHERE " + a.qf.Query
 	return a.qf, nil
 }
+func (a *AgGrid) BuildHavingSql() (qf *QueryFilter, err error) {
+	err = a.buildGroupHavingQuery(a.Param.RowGroupCols, a.Param.GroupKeys)
+	if err != nil {
+		return
+	}
+	err = a.parseFilterModel()
+	if err != nil {
+		return
+	}
+	if a.qf.Query == "" {
+		return
+	}
+	a.qf.Query = "HAVING " + a.qf.Query
+	return a.qf, nil
+}
 
 // getGroupName 获取分组条件
 func (a *AgGrid) getGroupName(cols []RowGroupCol, keys []string) (*KeyField, error) {
@@ -329,7 +355,7 @@ func (a *AgGrid) BuildFromSql() string {
 	return a.Handler.BuildFromSql()
 }
 
-// buildGroupQuery 生成组合查询sql
+// buildGroupQuery 生成组合查询where sql
 func (a *AgGrid) buildGroupQuery(cols []RowGroupCol, keys []string) error {
 	if len(cols) > 0 && len(keys) > 0 {
 		for i, v := range keys {
@@ -344,8 +370,48 @@ func (a *AgGrid) buildGroupQuery(cols []RowGroupCol, keys []string) error {
 	return nil
 }
 
+// buildGroupQuery 生成组合查询条件having sql
+func (a *AgGrid) buildGroupHavingQuery(cols []RowGroupCol, keys []string) error {
+	if len(cols) > 0 && len(keys) > 0 {
+		for i, v := range keys {
+			field := a.getHavingField(cols[i].Field)
+			if field == "" {
+				return fmt.Errorf("%s:%v", InvalidSqlField, field)
+			}
+			query := fmt.Sprintf("%s = ? ", field)
+			a.qf.And(query, v)
+		}
+	}
+	return nil
+}
+
 // ParseFilterModel 解析查询参数 并生成对应sql
 func (a *AgGrid) parseFilterModel() error {
+	for k, v := range a.Param.FilterModel {
+		field := a.getFilterField(k)
+		if field == "" {
+			return fmt.Errorf("%s : %v", InvalidSqlField, k)
+		}
+		bs, _ := json.Marshal(v)
+		f := &Filter{}
+		if err := json.Unmarshal(bs, f); err != nil {
+			return err
+		}
+		err := f.H().Parse(field, bs)
+		if err != nil {
+			return err
+		}
+		q, err := f.Handler.BuildQuery()
+		if err != nil {
+			return err
+		}
+		a.qf.And(q.Query, q.Args...)
+	}
+	return nil
+}
+
+// ParseFilterModel 解析查询参数 并生成对应sql
+func (a *AgGrid) parseFilterModelToHavingSql() error {
 	for k, v := range a.Param.FilterModel {
 		field := a.getFilterField(k)
 		if field == "" {

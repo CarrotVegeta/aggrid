@@ -13,7 +13,7 @@ type F func(k string, v any) *QueryFilter
 func (fd *FilterDate) New() FilterTypeSqlHandler {
 	return &FilterDate{QF: &QueryFilter{}}
 }
-func (fd *FilterDate) BuildSql(k string, v any, t string, f ...F) (*QueryFilter, error) {
+func (fd *FilterDate) BuildSql(k string, v any, t OperatorType, f ...F) (*QueryFilter, error) {
 	switch t {
 	case LessThan:
 		fd.LessThan(k, v)

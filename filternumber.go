@@ -11,7 +11,7 @@ type FilterNumber struct {
 func (fn *FilterNumber) New() FilterTypeSqlHandler {
 	return &FilterNumber{QF: &QueryFilter{}}
 }
-func (fn *FilterNumber) BuildSql(k string, v any, t string, f ...F) (*QueryFilter, error) {
+func (fn *FilterNumber) BuildSql(k string, v any, t OperatorType, f ...F) (*QueryFilter, error) {
 	switch t {
 	case LessThan:
 		fn.LessThan(k, v)

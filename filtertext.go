@@ -12,7 +12,7 @@ type FilterText struct {
 func (ft *FilterText) New() FilterTypeSqlHandler {
 	return &FilterText{QF: &QueryFilter{}}
 }
-func (ft *FilterText) BuildSql(k string, v any, t string, f ...F) (*QueryFilter, error) {
+func (ft *FilterText) BuildSql(k string, v any, t OperatorType, f ...F) (*QueryFilter, error) {
 	switch t {
 	case Contains:
 		ft.Contains(k, v)

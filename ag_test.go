@@ -21,19 +21,15 @@ func InitDB() {
 
 }
 
+// select 代表json对应的查询字段名,filter:代表where里面执行的字段名,group:代表group的字段名
 type User struct {
-	Name string `json:"name" ag:"select:name"`
+	Name string `json:"name" ag:"select:name;filter:name;group:name"`
 }
 
 func (u User) BuildFromSql() string {
 	return "FROM users"
 }
-func (u User) GetSqlField(k string) string {
-	return ""
-}
-func (u User) GetSelectField() []string {
-	return []string{}
-}
+
 func TestAgGrid_BuildSelect(t *testing.T) {
 	ag := NewAgGHandler(User{}, nil)
 	ag.parse()

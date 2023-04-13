@@ -12,7 +12,7 @@ type FilterArray struct {
 func (ft *FilterArray) New() FilterTypeSqlHandler {
 	return &FilterArray{QF: &QueryFilter{}}
 }
-func (ft *FilterArray) BuildSql(k string, v any, t string, f ...F) (*QueryFilter, error) {
+func (ft *FilterArray) BuildSql(k string, v any, t OperatorType, f ...F) (*QueryFilter, error) {
 	switch t {
 	case Contains:
 		ft.Contains(k, v)

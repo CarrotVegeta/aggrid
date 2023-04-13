@@ -25,58 +25,82 @@ func (f *Filter) H() FilterHandler {
 
 type FilterTypeSqlHandler interface {
 	New() FilterTypeSqlHandler
-	BuildSql(k string, v any, t string, f ...F) (*QueryFilter, error)
+	BuildSql(k string, v any, t OperatorType, f ...F) (*QueryFilter, error)
 }
+type OperatorType string
 
 // 判断逻辑
 const (
-	LessThan           = "lessThan"
-	Equals             = "equals"
-	NotEqual           = "notEqual"
-	GreaterThanOrEqual = "greaterThanOrEqual"
-	GreaterThan        = "greaterThan"
-	InRange            = "inRange"
-	Blank              = "blank"
-	NotBlank           = "notBlank"
-	LessThanOrEqual    = "lessThanOrEqual"
-	Contains           = "contains"
-	NotContains        = "notContains"
-	StartsWith         = "startsWith"
-	EndsWith           = "endsWith"
+	LessThan           OperatorType = "lessThan"
+	Equals             OperatorType = "equals"
+	NotEqual           OperatorType = "notEqual"
+	GreaterThanOrEqual OperatorType = "greaterThanOrEqual"
+	GreaterThan        OperatorType = "greaterThan"
+	InRange            OperatorType = "inRange"
+	Blank              OperatorType = "blank"
+	NotBlank           OperatorType = "notBlank"
+	LessThanOrEqual    OperatorType = "lessThanOrEqual"
+	Contains           OperatorType = "contains"
+	NotContains        OperatorType = "notContains"
+	StartsWith         OperatorType = "startsWith"
+	EndsWith           OperatorType = "endsWith"
 )
+
+type FilterType string
 
 // FilterType 类型
 const (
-	Text   = "text"
-	Number = "number"
-	Date   = "date"
-	Array  = "array"
+	Text   FilterType = "text"
+	Number FilterType = "number"
+	Date   FilterType = "date"
+	Array  FilterType = "array"
+	Set    FilterType = "set"
 )
 
-var FilterTypeSqlHandlerM = map[string]FilterTypeSqlHandler{}
+var DefaultFilterTypeSqlM = map[FilterType]FilterTypeSqlHandler{}
 
 func init() {
 	registerFilterTypeSqlHandler(Text, &FilterText{})
 	registerFilterTypeSqlHandler(Number, &FilterNumber{})
 	registerFilterTypeSqlHandler(Date, &FilterDate{})
 	registerFilterTypeSqlHandler(Array, &FilterArray{})
+	registerFilterTypeSqlHandler(Set, &FilterSet{})
 }
-func registerFilterTypeSqlHandler(k string, handler FilterTypeSqlHandler) {
-	FilterTypeSqlHandlerM[k] = handler
+func registerFilterTypeSqlHandler(k FilterType, handler FilterTypeSqlHandler) {
+	DefaultFilterTypeSqlM[k] = handler
 }
-func RegisterFilterTypeSqlHandler(k string, h FilterTypeSqlHandler) {
-	registerFilterTypeSqlHandler(k, h)
+
+type FilterTypeSqlService struct {
+	FilterTypeSqlHandlerM map[FilterType]FilterTypeSqlHandler
 }
-func getFilterTypeSqlHandler(filterType string) (FilterTypeSqlHandler, error) {
-	if _, ok := FilterTypeSqlHandlerM[filterType]; !ok {
+
+func NewFilterTypeSqlService() *FilterTypeSqlService {
+	f := &FilterTypeSqlService{
+		FilterTypeSqlHandlerM: make(map[FilterType]FilterTypeSqlHandler),
+	}
+	f.initTypeSqlHandlerM()
+	return f
+}
+
+func (f *FilterTypeSqlService) initTypeSqlHandlerM() {
+	for k, v := range DefaultFilterTypeSqlM {
+		f.FilterTypeSqlHandlerM[k] = v
+	}
+}
+func (f *FilterTypeSqlService) registerFilterTypeSqlHandler(k FilterType, handler FilterTypeSqlHandler) {
+	f.FilterTypeSqlHandlerM[k] = handler
+}
+
+func (f *FilterTypeSqlService) getFilterTypeSqlHandler(filterType FilterType) (FilterTypeSqlHandler, error) {
+	if _, ok := f.FilterTypeSqlHandlerM[filterType]; !ok {
 		return nil, fmt.Errorf("invalid filter-type:%v", filterType)
 	}
-	return FilterTypeSqlHandlerM[filterType], nil
+	return f.FilterTypeSqlHandlerM[filterType].New(), nil
 }
-func NewFilterSqlHandler(filterType string) (FilterTypeSqlHandler, error) {
-	h, err := getFilterTypeSqlHandler(filterType)
+func (f *FilterTypeSqlService) NewFilterSqlHandler(filterType FilterType) (FilterTypeSqlHandler, error) {
+	h, err := f.getFilterTypeSqlHandler(filterType)
 	if err != nil {
 		return nil, err
 	}
-	return h.New(), nil
+	return h, nil
 }
