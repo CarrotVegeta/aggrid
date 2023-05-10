@@ -1,35 +1,38 @@
-package agtwo
+package mysql
 
 import (
 	"fmt"
+	"github.com/CarrotVegeta/aggrid/constant"
+	"github.com/CarrotVegeta/aggrid/interfaces"
+	"github.com/CarrotVegeta/aggrid/utils"
 )
 
 type FilterNumber struct {
-	QF *QueryFilter
+	QF *utils.QueryFilter
 }
 
-func (fn *FilterNumber) New() FilterTypeSqlHandler {
-	return &FilterNumber{QF: &QueryFilter{}}
+func (fn *FilterNumber) New() interfaces.FilterTypeSqlHandler {
+	return &FilterNumber{QF: &utils.QueryFilter{}}
 }
-func (fn *FilterNumber) BuildSql(k string, v any, t string, f ...F) (*QueryFilter, error) {
+func (fn *FilterNumber) BuildSql(k string, v any, t constant.OperatorType, f ...constant.F) (*utils.QueryFilter, error) {
 	switch t {
-	case LessThan:
+	case constant.LessThan:
 		fn.LessThan(k, v)
-	case LessThanOrEqual:
+	case constant.LessThanOrEqual:
 		fn.LessThanOrEqual(k, v)
-	case Equals:
+	case constant.Equals:
 		fn.Equals(k, v)
-	case NotEqual:
+	case constant.NotEqual:
 		fn.NotEqual(k, v)
-	case GreaterThan:
+	case constant.GreaterThan:
 		fn.GreaterThan(k, v)
-	case GreaterThanOrEqual:
+	case constant.GreaterThanOrEqual:
 		fn.GreaterThanOrEqual(k, v)
-	case InRange:
+	case constant.InRange:
 		fn.InRange(k, v)
-	case Blank:
+	case constant.Blank:
 		fn.Blank(k)
-	case NotBlank:
+	case constant.NotBlank:
 		fn.NotBlank(k)
 	default:
 		return nil, fmt.Errorf("filter type is invalid : %v", t)

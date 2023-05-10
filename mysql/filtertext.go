@@ -1,34 +1,37 @@
-package agtwo
+package mysql
 
 import (
 	"fmt"
+	"github.com/CarrotVegeta/aggrid/constant"
+	"github.com/CarrotVegeta/aggrid/interfaces"
+	"github.com/CarrotVegeta/aggrid/utils"
 )
 
 type FilterText struct {
 	Type string `json:"type"`
-	QF   *QueryFilter
+	QF   *utils.QueryFilter
 }
 
-func (ft *FilterText) New() FilterTypeSqlHandler {
-	return &FilterText{QF: &QueryFilter{}}
+func (ft *FilterText) New() interfaces.FilterTypeSqlHandler {
+	return &FilterText{QF: &utils.QueryFilter{}}
 }
-func (ft *FilterText) BuildSql(k string, v any, t string, f ...F) (*QueryFilter, error) {
+func (ft *FilterText) BuildSql(k string, v any, t constant.OperatorType, f ...constant.F) (*utils.QueryFilter, error) {
 	switch t {
-	case Contains:
+	case constant.Contains:
 		ft.Contains(k, v)
-	case NotContains:
+	case constant.NotContains:
 		ft.Locate(k, v)
-	case Equals:
+	case constant.Equals:
 		ft.Equals(k, v)
-	case NotEqual:
+	case constant.NotEqual:
 		ft.NotEqual(k, v)
-	case StartsWith:
+	case constant.StartsWith:
 		ft.StartsWith(k, v)
-	case EndsWith:
+	case constant.EndsWith:
 		ft.EndsWith(k, v)
-	case Blank:
+	case constant.Blank:
 		ft.Blank(k)
-	case NotBlank:
+	case constant.NotBlank:
 		ft.NotBlank(k)
 	default:
 		return nil, fmt.Errorf("filter type is invalid : %v", t)

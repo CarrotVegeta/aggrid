@@ -1,33 +1,35 @@
-package agtwo
+package clickhouse
 
 import (
 	"fmt"
+	"github.com/CarrotVegeta/aggrid/constant"
+	"github.com/CarrotVegeta/aggrid/interfaces"
+	"github.com/CarrotVegeta/aggrid/utils"
 	"time"
 )
 
 type FilterDate struct {
-	QF *QueryFilter
+	QF *utils.QueryFilter
 }
-type F func(k string, v any) *QueryFilter
 
-func (fd *FilterDate) New() FilterTypeSqlHandler {
-	return &FilterDate{QF: &QueryFilter{}}
+func (fd *FilterDate) New() interfaces.FilterTypeSqlHandler {
+	return &FilterDate{QF: &utils.QueryFilter{}}
 }
-func (fd *FilterDate) BuildSql(k string, v any, t string, f ...F) (*QueryFilter, error) {
+func (fd *FilterDate) BuildSql(k string, v any, t constant.OperatorType, f ...constant.F) (*utils.QueryFilter, error) {
 	switch t {
-	case LessThan:
+	case constant.LessThan:
 		fd.LessThan(k, v)
-	case Equals:
+	case constant.Equals:
 		fd.Equals(k, v, f...)
-	case NotEqual:
+	case constant.NotEqual:
 		fd.NotEqual(k, v)
-	case GreaterThan:
+	case constant.GreaterThan:
 		fd.GreaterThan(k, v, f...)
-	case InRange:
+	case constant.InRange:
 		fd.InRange(k, v)
-	case Blank:
+	case constant.Blank:
 		fd.Blank(k)
-	case NotBlank:
+	case constant.NotBlank:
 		fd.NotBlank(k)
 	default:
 		return nil, fmt.Errorf("filter type is invalid : %v", t)
@@ -46,7 +48,7 @@ func (fd *FilterDate) NotBlank(k string) *FilterDate {
 }
 
 // InRange 范围内
-func (fd *FilterDate) InRange(k string, v any, f ...F) *FilterDate {
+func (fd *FilterDate) InRange(k string, v any, f ...constant.F) *FilterDate {
 	if len(f) > 0 {
 		qf := f[0](k, v)
 		fd.QF.And(qf.Query, qf.Args...)
@@ -55,13 +57,12 @@ func (fd *FilterDate) InRange(k string, v any, f ...F) *FilterDate {
 	arr := v.([]string)
 	startTime, _ := time.ParseInLocation("2006-01-02 15:04:05", arr[0], time.Local)
 	lTime, _ := time.ParseInLocation("2006-01-02 15:04:05", arr[1], time.Local)
-	endTime := lTime.AddDate(0, 0, 1).UnixMilli()
-	fd.QF.And(fmt.Sprintf("%s >= ? AND %s <= ? ", k, k), startTime.UnixMilli(), endTime)
+	fd.QF.And(fmt.Sprintf("%s >= ? AND %s <= ? ", k, k), startTime.UnixMilli(), lTime.UnixMilli())
 	return fd
 }
 
 // GreaterThan 大于
-func (fd *FilterDate) GreaterThan(k string, v any, f ...F) *FilterDate {
+func (fd *FilterDate) GreaterThan(k string, v any, f ...constant.F) *FilterDate {
 	if len(f) > 0 {
 		qf := f[0](k, v)
 		fd.QF.And(qf.Query, qf.Args...)
@@ -74,7 +75,7 @@ func (fd *FilterDate) GreaterThan(k string, v any, f ...F) *FilterDate {
 }
 
 // NotEqual 不等于
-func (fd *FilterDate) NotEqual(k string, v any, f ...F) *FilterDate {
+func (fd *FilterDate) NotEqual(k string, v any, f ...constant.F) *FilterDate {
 	if len(f) > 0 {
 		qf := f[0](k, v)
 		fd.QF.And(qf.Query, qf.Args...)
@@ -88,7 +89,7 @@ func (fd *FilterDate) NotEqual(k string, v any, f ...F) *FilterDate {
 }
 
 // Equals 等于
-func (fd *FilterDate) Equals(k string, v any, f ...F) *FilterDate {
+func (fd *FilterDate) Equals(k string, v any, f ...constant.F) *FilterDate {
 	if len(f) > 0 {
 		qf := f[0](k, v)
 		fd.QF.And(qf.Query, qf.Args...)
@@ -102,7 +103,7 @@ func (fd *FilterDate) Equals(k string, v any, f ...F) *FilterDate {
 }
 
 // LessThan 小于
-func (fd *FilterDate) LessThan(k string, v any, f ...F) *FilterDate {
+func (fd *FilterDate) LessThan(k string, v any, f ...constant.F) *FilterDate {
 	if len(f) > 0 {
 		qf := f[0](k, v)
 		fd.QF.And(qf.Query, qf.Args...)

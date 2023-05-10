@@ -1,17 +1,20 @@
-package agtwo
+package filtermodel
 
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/CarrotVegeta/aggrid/constant"
+	"github.com/CarrotVegeta/aggrid/filtertype"
+	"github.com/CarrotVegeta/aggrid/utils"
 )
 
 // FilterModelCondition 多个查询条件
 type FilterModelCondition struct {
-	Key        string `json:"key"`
-	FilterType string `json:"filterType"`
-	Operator   string `json:"operator"`
-	Condition1 any    `json:"condition1"`
-	Condition2 any    `json:"condition2"`
+	Key        string              `json:"key"`
+	FilterType constant.FilterType `json:"filterType"`
+	Operator   string              `json:"operator"`
+	Condition1 any                 `json:"condition1"`
+	Condition2 any                 `json:"condition2"`
 }
 
 // Parse 单个查询条件的参数解析
@@ -22,7 +25,7 @@ func (f *FilterModelCondition) Parse(k string, c []byte) error {
 	}
 	return nil
 }
-func (f *FilterModelCondition) GetFilterAndType(p []byte) (any, string, error) {
+func (f *FilterModelCondition) GetFilterAndType(p []byte) (any, constant.OperatorType, error) {
 	handler, err := NewFilterTypeHandler(f.FilterType, p)
 	if err != nil {
 		return nil, "", err
@@ -34,19 +37,14 @@ func (f *FilterModelCondition) GetFilterAndType(p []byte) (any, string, error) {
 	return filter, handler.GetType(), nil
 }
 
-const (
-	AND = "AND"
-	OR  = "OR"
-)
-
 // BuildQuery 单个查询条件的sql生成
-func (f *FilterModelCondition) BuildQuery() (*QueryFilter, error) {
+func (f *FilterModelCondition) BuildQuery(service *filtertype.FilterTypeSqlService) (*utils.QueryFilter, error) {
 	condBs1, _ := json.Marshal(f.Condition1)
 	f1, t1, err := f.GetFilterAndType(condBs1)
 	if err != nil {
 		return nil, err
 	}
-	h, err := NewFilterSqlHandler(f.FilterType)
+	h, err := service.NewFilterSqlHandler(f.FilterType)
 	if err != nil {
 		return nil, err
 	}
@@ -64,9 +62,9 @@ func (f *FilterModelCondition) BuildQuery() (*QueryFilter, error) {
 		return nil, err
 	}
 	switch f.Operator {
-	case AND:
+	case constant.AND:
 		qf1.And(qf2.Query, qf2.Args...)
-	case OR:
+	case constant.OR:
 		qf1.Or(qf2.Query, qf2.Args...)
 	default:
 		return nil, fmt.Errorf("invalid operatof : %v", f.Operator)

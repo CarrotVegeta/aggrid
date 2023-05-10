@@ -1,4 +1,4 @@
-package agtwo
+package aggrid
 
 type KeyField struct {
 	Key   string
